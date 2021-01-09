@@ -1,0 +1,112 @@
+---
+title: "Automatic or Manual - Which is Best for MPG?"
+author: "Andrew Holland"
+date: "11/12/2020"
+output: pdf_document
+geometry: "left=2cm,right=2cm,top=1cm,bottom=2cm"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+
+```
+
+## Executive Summary
+
+Using the "mtcars" dataset, we look to address the following questions:
+
+* "Is an automatic or manual transmission better for MPG”
+* "Quantify the MPG difference between automatic and manual transmissions"
+
+From our investigation, we conlcude that a manual car typically has better MPG, although this is not directly due to causation - manual cars are typically lighter and less powerfulWe also conlcude that there is no significant impact on MPG caused by the type of transmission the car has. 
+
+It is worth noting however that the dataset used may not be the entire picture - as suggested from our diagnostic plot, we could claim that there are "known unknowns" influencing our model, that we have not accounted for in our final model. What we do know is that transmission type is not this unaacounted-for variable.
+
+## Initial Exploration
+
+As a first step, lets look at the dataset:
+```{r head, echo=FALSE}
+head(mtcars,5)
+```
+For each car model, we have `r ncol(mtcars) - 1` measured values. Intially, the most important measurements to us are MPG and am (representing automatic and manual as a 0 or 1 respectively). Lets plot these, and see if we find a relation:
+
+```{r plot1, echo=FALSE, fig.height=2}
+mtcars2 <- mtcars %>%
+    mutate(am = ifelse(am==0, "Auto", "Manual"))
+
+ggplot(data=mtcars2, aes(x=am, y=mpg, fill=am, group=am)) +
+    geom_boxplot() +
+    xlab("Transmission") +
+    ylab("MPG") +
+    theme_bw()
+```
+
+From this brief assessment, we could naturally conclude that "manual cars have a better MPG than automatic cars." We can also peform a t-test to verify that this conclusion is valid (Appendix 1). This however is not the whole picture - we have shown a trend, but not determined causation. It could be the case that the transmission has no impact on the MPG, but some other variable instead.
+
+Lets assume that the mtcars dataset contains all the factors determining a car's MPG We then have `r ncol(mtcars) - 2` other measurements besides transmission that could influence a car's MPG Introducing these into our model will begin to pull back the curtain on how inflential trnasmission truly is on MPG.
+
+## Applying Models
+
+We could simply create a linear model that predicts mpg using all the other variables in the dataset (Appendix 2). As the number of variables (`r ncol(mtcars2) -2`) is large compared to the number or observations (`r nrow(mtcars2)`), the model suffers the consequences of overfitting - our R-squared and p-values are reasonable, but the model terms are largely insignificant. Here we have begun to model the random error in the data, rather than the underlying relationships between our variables.
+
+```{r overmodel, echo=FALSE}
+overmodel <- lm(data=mtcars, mpg~factor(cyl)+disp+hp+drat+wt+qsec+factor(vs)+factor(am)+factor(gear)+factor(carb))
+```
+We can however look a the significance values, and we see that two variables, weight (wt) and horesepower (hp) are both below 0.1 - far more significant than the rest (the next closest is the intercept at 0.25.) We will therefore start by investigating the impact of these two variables (along with transmission type) on mpg.
+
+Starting with weight, and then adding horsepower as variables, we find a reasonable model, with high significace. We should also consider that there is also some underlying relation between weight and horsepower (not an unreasonable assumption), which we add in model 3. Lastly, we introduce our study variable for transmission type am, producing model 4. We can compare these models using the anova() function.
+
+```{r modelling, echo=FALSE}
+mdl <- lm(data=mtcars2, mpg~wt)
+mdl2 <- lm(data=mtcars2, mpg~wt+hp)
+mdl3 <- lm(data=mtcars2, mpg~wt+hp+wt:hp)
+mdl4 <- lm(data=mtcars2, mpg~wt+hp+wt:hp+am)
+anova(mdl, mdl2, mdl3, mdl4)
+```
+Here, we see that introducing the weight/horespower interaction has a significant effect on the model (model 3), but that introducing the effect of transmission type (model 4) produces very little impact, with a p-value greater than 0.9.
+
+Looking at these models, we would select model 3 as the best - a model where transmission is not included.
+
+Before making conclusions, let's investigate the diagnostic plots of the model (Appendix 3).
+
+* From the Residuals vs Fitted plot, we can see that there is no clear trend in the residuals, with the average line staying close to zero.
+* The Normal Q-Q plot tails off at the lower quantiles, but otherwise follows a roughly straight line, suggesting that the values observed in the actual mtcars data could feasibly have come from our model.
+* In the Scale-Location plot shows a curious upward trend on the latter half of the fitted values. This could be caused by an variable that we haven't accounted for.
+* The Residuals vs Leverage plot is promising, with no points at or beyond the Cook's Distance, and so no one point is overly influencing our model.
+
+## Conclusions
+
+From our model 3, we can draw the following conclusions:
+
+* Increasing weight by 1 unit (1000 lbs) will result in an expected decrease of 8.21 MPG 
+* Increasing horsepower by 10 units (gross hp) will result in an expected decrease of 0.12 MPG
+* The above values are average decreases - there is an interaction between them - the actual decrease per unit of one variable is impacted by the other variable.
+* There is no significant impact on MPG caused by the type of transmission the car has.
+
+\newpage
+
+## Appendix 1
+
+```{r label=t.test, echo=TRUE}
+data_man <- mtcars[mtcars$am == 1,]
+data_auto <- mtcars[mtcars$am == 0,]
+ttest <- t.test(data_auto$mpg, data_man$mpg, alternative = "two.sided")
+ttest
+```
+
+## Appendix 2
+
+```{r label=app, echo=TRUE}
+summary(overmodel)
+```
+
+\newpage
+
+## Appendix 3
+
+```{r diagnostics, echo=TRUE, fig.height=7}
+par(mfrow =c(2, 2))
+plot(mdl3, labels.id=mtcars$names)
+```
